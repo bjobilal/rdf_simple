@@ -1,3 +1,5 @@
-./condor_*.stderr
-./condor_*.stdout
-./condor_*.log
+condor_*.stderr
+condor_*.stdout
+condor_*.log
+*_condor.sh
+*_condor.jdl

@@ -191,9 +191,10 @@ def makeZ_fsr(dataframe, lepton):
 
 def makeW(dataframe, lepton):
     if "2024" in era:
+        print("[VH] Using 2024 MET col")
         Ws = dataframe.Define("bestW_info", "best_W_info({L}_pt, {L}_eta, {L}_phi, {L}_mass, tight_{l}, PFMET_pt, PFMET_phi)".format(L=lepton, l = lepton.lower())) 
     else:
-        Ws = dataframe.Define("bestW_info", "best_W_info({L}_pt, {L}_eta, {L}_phi, {L}_mass, tight_{l}, MET_pt, MET_phi)".format(L=lepton, l = lepton.lower()))
+       Ws = dataframe.Define("bestW_info", "best_W_info({L}_pt, {L}_eta, {L}_phi, {L}_mass, tight_{l}, MET_pt, MET_phi)".format(L=lepton, l = lepton.lower()))
     Ws = Ws.Define("W_pt", "bestW_info[0]")
     Ws = Ws.Define("W_eta", "bestW_info[1]")
     Ws = Ws.Define("W_phi", "bestW_info[2]")
@@ -541,6 +542,7 @@ def analysis(data,sample):
     phi_mass=[15,20,30,40,50,55]
     actions = []
     era = data["era"]
+    print("[VH] Era found to be", era)
     actions.extend(zmumuH(data,phi_mass,sample))
     actions.extend(zeeH(data,phi_mass,sample))
     actions.extend(wmunuH(data,phi_mass,sample))

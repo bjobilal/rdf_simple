@@ -49,7 +49,8 @@ center_of_mass = {'2024': 13.6,
                   '2018': 13,
                   '2017': 13,
                   '2016': 13,
-                  'Run2': 13}
+                  'Run2': 13,
+                  'Run3': 13.6}
 
 
 # Standard Analysis Cuts
@@ -258,15 +259,16 @@ def getGoodFiles(file_list, analysis):
             if not f or f.IsZombie():
                 print(f"WARNING: Could not open file {f}")
                 continue
+            runs_tree = f.Get("Runs")
+            if not runs_tree:
+                file_is_good = False
+                print(f"WARNING: File {f} does not contain Runs tree")
             tree = f.Get(analysis)
             if not tree:
-                print(f"WARNING: File {f} does not contain tree '{analysis}'")
+                #print(f"WARNING: File {f} does not contain tree '{analysis}'")
                 file_is_good = False
             elif tree.GetListOfBranches().GetEntries() < 1:
-                print(
-                    f"WARNING: File {f} has tree '{analysis}' "
-                    f"with zero branches"
-                )
+                #print( f"WARNING: File {f} has tree '{analysis}' " f"with zero branches" )
                 file_is_good = False
             f.Close()
         except Exception as e:
@@ -356,15 +358,17 @@ def calculate_fake_rate(sampleDir,prod,eras=['2016','2017','2018','2022','2023',
         return lower, upper
 
     if doMCClosure:
-        wjets=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,'wmugamma')
+        wjets=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
         print("Finished WJets grab")
-        vjets=getPlotter('DYJetsToLL_M50_LO',sampleDir,'MC',eras,prod,'wmugamma')
+        vjets=getPlotter('DYJetsToLL_M50_',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
         print("Finished DYJets grab")
-        tt=getPlotter('TTJets',sampleDir,'MC',eras,prod,'wmugamma')
+        tt=getPlotter('TTJets',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
         print("Finished TTJets grab")
         fr = merged_plotter([wjets,vjets,tt])
+        if any(x is None for x in [wjets, vjets, tt]):
+            raise Exception("[CALCULATE-FAKE-RATE] WARNING: At least one of wjets, vjets, ttjets is null!")
     else:    
-        fr = getPlotter('nothing',sampleDir,'DATA',eras,prod,'wmugamma')
+        fr = getPlotter('nothing',sampleDir,'DATA',eras,prod,'wmugamma',checkIntegrity='wmugamma')
         print("Finished DATA grab")
 
         
@@ -410,7 +414,7 @@ def calculate_fake_rate(sampleDir,prod,eras=['2016','2017','2018','2022','2023',
     if doMCClosure:
         mh.cms.label(data=False, ax=ax, loc=0)
     else:
-        mh.cms.label("Preliminary", data=True, lumi=(lumifb[eras[0]] if len(eras)==1 else lumifb['Run2']), ax=ax, loc=0)
+        mh.cms.label("Preliminary", data=True, lumi=(lumifb[eras[0]] if len(eras)==1 else lumifb['Run2']), ax=ax, loc=0, rlabel=(center_of_mass[eras[0]] if len(eras)==1 else center_of_mass['Run3']))
     #print it in C++ format
     #note that we remove the last edge on how the code is defined to work
     st=st+'\n'+f'std::vector<float> {arrayName}_xbins = {{'+','.join([str(x) for x in xedges[:-1]])+'};\n'+f'std::vector<float> {arrayName}_ybins = {{'+','.join([str(y) for y in yedges[:-1]])+'};\n'
@@ -535,31 +539,34 @@ def getAnalysis(sampleDir,prod,ana,era='Run2',masses=masses,lifetimes=lifetimes,
 
     #For these MC sampleswe do not apply photon scale factors since they are not used for data MC/comparison
     #We do it for the signals though
-
-    # TODO: for blinded plots, this is temporarily commented out (BEN: 2/13/2026). 
-    '''
-    analysis['wjets']=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,ana)
+    print("[GET-ANALYSIS] Getting WJetsToLNu...")
+    analysis['wjets']=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
     analysis['wjets'].addCorrectionFactor(leptonSF[ana],'flat')
-    
-    analysis['zjets']=getPlotter('DYJetsToLL_M50_LO',sampleDir,'MC',eras,prod,ana)
+
+    print("[GET-ANALYSIS] Getting DYJetsToLL_M50_LO...")    
+    analysis['zjets']=getPlotter('DYJetsToLL_M50_',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
     analysis['zjets'].addCorrectionFactor(leptonSF[ana],'flat')
-    if ana in ['wmn2g','wenu2g']:
-        analysis['tt']=getPlotter('TTJets',sampleDir,'MC',eras,prod,ana)
+    if ana in ['wmn2g','wen2g']:
+        print("[GET-ANALYSIS] Getting TTJets...")    
+        analysis['tt']=getPlotter('TTJets',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
         analysis['tt'].addCorrectionFactor(leptonSF[ana],'flat')
     else:
-        analysis['tt']=getPlotter('TTJets_DiLept',sampleDir,'MC',eras,prod,ana)
+        print("[GET-ANALYSIS] Getting TTJets_DiLept...")    
+        analysis['tt']=getPlotter('TTJets_DiLept',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
         analysis['tt'].addCorrectionFactor(leptonSF[ana],'flat')
         
     analysis['tt'].setFillProperties(1001, ROOT.kAzure-2)
     analysis['tt'].setLineProperties(1, ROOT.kAzure-2, 3)
 
-    analysis['wg']=getPlotter('WGToLNuG',sampleDir,'MC',eras,prod,ana)
+    print("[GET-ANALYSIS] Getting WGToLNuG...")
+    analysis['wg']=getPlotter('WGToLNuG',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
     analysis['wg'].addCorrectionFactor(leptonSF[ana],'flat')
     
-    analysis['wgg']=getPlotter('WGG',sampleDir,'MC',eras,prod,ana)
+    print("[GET-ANALYSIS] Getting WGG...")
+    analysis['wgg']=getPlotter('WGG',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
     analysis['wgg'].addCorrectionFactor(leptonSF[ana],'flat')
 
-    '''       
+           
     analysis['signal']={}
     for m in masses:
         analysis['signal'][m]={}
@@ -594,9 +601,9 @@ def runAction(sampleDir,prod,action='fakerate_closure',masses=masses,outputDir='
     if era=='Run2':
         eras=['2016','2017','2018']
     elif era=='Run3':
-        #eras=['2022','2023','2024']
-        # TODO: remove temporary reduction to only <year> fake rate calculation. 
-        eras = ['2023']
+        eras=['2022','2023','2024']
+    else:
+        eras = [era]
 
     #ACTION: Kinematic Fit plots
     if action=="kinfit_plots":
@@ -687,7 +694,7 @@ def runAction(sampleDir,prod,action='fakerate_closure',masses=masses,outputDir='
             fr=calculate_fake_rate(sampleDir,prod,eras,arrayName="fake_rate",outdir=outputDir,file_extension=file_extension)
             file.write(fr)
             #write the average all run MC fake rate for studies
-            fr=calculate_fake_rate(sampleDir,prod,eras,arrayName="fake_rate_MC",outdir=outputDir,doMCClosure=True,file_extension=file_extension)
+            fr=calculate_fake_rate(sampleDir,prod,eras,arrayName=f"fake_rate_MC{eras[0]}",outdir=outputDir,doMCClosure=True,file_extension=file_extension)
             file.write(fr)
             file.write("#endif\n")
     
@@ -700,6 +707,8 @@ def runAction(sampleDir,prod,action='fakerate_closure',masses=masses,outputDir='
             #create a plotter that has all MC as data
             analysis=getAnalysis(sampleDir,prod,ana,background_method='fakerate',era=era,signals=[],lifetimes=[])
             plotters=[analysis['wjets'],analysis['zjets'],analysis['tt']]
+            if any(x is None for x in plotters):
+                raise Exception("[FAKE-RATE-MC-CLOSURE] WARNING: At least one of plotters is null!")
             #create a fake rate MC plotter
             for m in masses:
                 print(f"Running {ana} m={m} GeV") 
@@ -707,7 +716,7 @@ def runAction(sampleDir,prod,action='fakerate_closure',masses=masses,outputDir='
                                             cuts[ana][m]['cr'],
                                             plotters,
                                             'fakeRate_MC',
-                                            f'fake_rate(Photon_pt[best_2g_idx1_m{m}],Photon_eta[best_2g_idx1_m{m}],Photon_pt[best_2g_idx2_m{m}],Photon_eta[best_2g_idx2_m{m}],(Photon_cutBased[best_2g_idx1_m{m}]>0),(Photon_cutBased[best_2g_idx2_m{m}]>0),fake_rate_MC_vals,fake_rate_MC_xbins,fake_rate_MC_ybins)')                                                  
+                                            f'fake_rate(Photon_pt[best_2g_idx1_m{m}],Photon_eta[best_2g_idx1_m{m}],Photon_pt[best_2g_idx2_m{m}],Photon_eta[best_2g_idx2_m{m}],(Photon_cutBased[best_2g_idx1_m{m}]>0),(Photon_cutBased[best_2g_idx2_m{m}]>0),fake_rate_MC{era}_vals,fake_rate_MC{era}_xbins,fake_rate_MC{era}_ybins)')                                                  
                 #make a stack plotter and plot the stack
                 stack=mplhep_plotter(com=center_of_mass[era],data=False,lumi=None)
                 stack.add_plotter(bkg,label='Fake rate estimate',typeP='data',error_mode='poisson_bootstrap')               
@@ -1006,5 +1015,8 @@ def runAction(sampleDir,prod,action='fakerate_closure',masses=masses,outputDir='
                                     dcm.write()
                                     
                         analysis=None
+    
+    else:
+        print("[VHpost] Unrecognized action. Exiting...")
 
         
