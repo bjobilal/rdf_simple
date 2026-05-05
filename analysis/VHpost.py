@@ -283,7 +283,7 @@ def getGoodFiles(file_list, analysis):
     print(f"[GET-GOOD-FILES] Output: {len(good_files)} file(s) in {analysis}")        
     return good_files
 
-def getFiles(query,sampleDir,sampleType,era,prod,checkIntegrity=None):
+def getFiles(query,sampleDir,sampleType,era,prod,checkIntegrity):
     if '/store' in sampleDir:
         ser = pd.Series(subprocess.check_output(['xrdfs', 'root://cmseos.fnal.gov', 'ls', f"{sampleDir}/{sampleType}{era}_{prod}/"], text=True).split("\n"))
         return(list('root://cmseos.fnal.gov/' + ser[ser.str.contains(query)]))
@@ -298,15 +298,15 @@ def getFiles(query,sampleDir,sampleType,era,prod,checkIntegrity=None):
         except:
             return []
 
-def getPlotter(sample,sampleDir,sampleType,eras,prod,analysis,checkIntegrity=None): # checkIntegrity == analysis tree to be checked
+def getPlotter(sample,sampleDir,sampleType,eras,prod,analysis,checkIntegrity): # checkIntegrity == analysis tree to be checked
     plotters=[]
     for era in eras:
         #if we are doing data overrtide the search
         files=[]
         if sampleType=='DATA':
             if analysis in ['wen2g','zee2g','wegamma']:
-                if era=='2018':
-                    files = getFiles('EGamma',sampleDir,sampleType,era,prod)
+                if era in ['2018','2022','2023','2024']:
+                    files = getFiles('EGamma',sampleDir,sampleType,era,prod, checkIntegrity)
                 else:
                     files = getFiles('SingleElectron',sampleDir,sampleType,era,prod,checkIntegrity)
             else:
@@ -361,43 +361,49 @@ def calculate_fake_rate(sampleDir,prod,eras=['2016','2017','2018','2022','2023',
         return lower, upper
 
     if doMCClosure:
-        wjets=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
+        wjets=getPlotter('WJetsToLNu',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
         print("Finished WJets grab")
-        vjets=getPlotter('DYJetsToLL_M50_',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
+        vjets=getPlotter('DYJetsToLL_M50_',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
         print("Finished DYJets grab")
-        tt=getPlotter('TTJets',sampleDir,'MC',eras,prod,'wmugamma',checkIntegrity='wmugamma')
+        tt=getPlotter('TTJets',sampleDir,'MC',eras,prod,ana,checkIntegrity=ana)
         print("Finished TTJets grab")
         fr = merged_plotter([wjets,vjets,tt])
         if any(x is None for x in [wjets, vjets, tt]):
             raise Exception("[CALCULATE-FAKE-RATE] WARNING: At least one of wjets, vjets, ttjets is null!")
     else:    
-        fr = getPlotter('nothing',sampleDir,'DATA',eras,prod,ana)
-
+        fr = getPlotter('nothing',sampleDir,'DATA',eras,prod,ana, checkIntegrity=ana)
+        if fr is None:
+            raise Exception("[CALCULATE-FAKE-RATE] WARNING: DATA plotter is none!")
+        print("[CALCULATE-FAKE-RATE] Finished DATA grab")
+        
     if ana=='wmugamma':
         lepton='MU'
         cutsMisID='(Photon_pt>0)'#dummy
     else:    
         lepton='ELE'
-        fr.define("Photon_EGMass","invMassEG(Electron_pt[W_l1_idx],Electron_eta[W_l1_idx],Electron_phi[W_l1_idx],Electron_mass[W_l1_idx],Photon_pt, Photon_eta,Photon_phi,Photon_mass)")
+        fr.define("Photon_EGMass","invMassEG(Electron_pt[W_l1_idx],Electron_eta[W_l1_idx],Electron_phi[W_l1_idx],Electron_mass[W_l1_idx],Photon_pt, Photon_eta,Photon_phi)")
         cutsMisID='(abs(Photon_EGMass-91)>10.)'
 
-    cuts_denom = "&&".join([cuts['W'][lepton],"(Sum(Photon_preselection)==1)",cutsMisID,'(Photon_preselection==1)'])
-    cuts_num = '&&'.join([cuts['W'][lepton],"(Sum(Photon_preselection)==1)",cutsMisID,'((Photon_preselection*Photon_cutBased)>0)'])
-
-    xedges,yedges,denominator,w2_denom = fr.array2d('Photon_pt','Photon_eta',cuts_denom,('denom','denom',len(ptbins)-1,np.array(ptbins),len(etabins)-1,np.array(etabins)))
-    xedges,yedges,numerator,w2_num = fr.array2d('Photon_pt','Photon_eta',cuts_num,('num','num',len(ptbins)-1,np.array(ptbins),len(etabins)-1,np.array(etabins)))
+    print('[FR] Processing ', lepton, "...")
+    cuts_denom = "&&".join([cuts['W'][lepton],"(Sum(Photon_preselection)==1)",cutsMisID,'((Photon_preselection==1))'])
+    cuts_num = '&&'.join([cuts['W'][lepton], "(Sum(Photon_preselection)==1)",cutsMisID,'((Photon_preselection*Photon_cutBased)>0)'])
+    
+    xedges,yedges,denominator,w2_denom = fr.array2d('Photon_pt','Photon_eta',cuts_denom,('denom','denom',len(ptbins)-1,np.array(ptbins),len(etabins)-1,np.array(etabins)), lepton=lepton)
+    xedges,yedges,numerator,w2_num = fr.array2d('Photon_pt','Photon_eta',cuts_num,('num','num',len(ptbins)-1,np.array(ptbins),len(etabins)-1,np.array(etabins)), lepton=lepton)
 
     #plot the numerator and denominator separately
     fig, ax = plt.subplots()
     mesh = ax.pcolormesh(xedges, yedges, denominator, cmap='plasma', edgecolors='white', linewidth=0.5)
     plt.colorbar(mesh, label='fake rate denominator')
     plt.savefig(f'{outdir}/{arrayName}_{lepton}_denominator.{file_extension}', dpi=400, bbox_inches='tight')
+    plt.savefig(f'fr_results/{eras[0]}/{arrayName}_{lepton}_denominator.png', dpi=400, bbox_inches='tight')
     plt.close()
     
     fig, ax = plt.subplots()
     mesh = ax.pcolormesh(xedges, yedges, denominator, cmap='plasma', edgecolors='white', linewidth=0.5)
     plt.colorbar(mesh, label='fake rate numerator')
     plt.savefig(f'{outdir}/{arrayName}_{lepton}_numerator.{file_extension}', dpi=400, bbox_inches='tight')
+    plt.savefig(f'fr_results/{eras[0]}/{arrayName}_{lepton}_numerator.png', dpi=400, bbox_inches='tight')
     plt.close()
   
     
@@ -443,6 +449,7 @@ def calculate_fake_rate(sampleDir,prod,eras=['2016','2017','2018','2022','2023',
         #note that we remove the last edge on how the code is defined to work
     st=st+'\n'+f'std::vector<float> {arrayName}_{lepton}_xbins = {{'+','.join([str(x) for x in xedges[:-1]])+'};\n'+f'std::vector<float> {arrayName}_{lepton}_ybins = {{'+','.join([str(y) for y in yedges[:-1]])+'};\n'
     plt.savefig(f'{outdir}/{arrayName}_{lepton}.{file_extension}', dpi=400, bbox_inches='tight')
+    plt.savefig(f'fr_results/{eras[0]}/{arrayName}_{lepton}.png', dpi=400, bbox_inches='tight')
     plt.close()
     return st
 

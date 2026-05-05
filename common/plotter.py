@@ -363,31 +363,70 @@ class rdf_plotter(plotter_base):
             h.GetYaxis().SetTitle(titley+ " ["+unitsy+"]")
         return h.GetPtr()
 
-
-    def hist2d(self,var1,var2,cuts,model,titlex = "",unitsx = "",titley="",unitsy=""):
-        corrString="1.0"
+    def hist2d(self, var1, var2, cuts, model, titlex="", unitsx="", titley="", unitsy=""):
+        corrString = "1.0"
         for corr in self.corrFactors:
-            corrString = corrString+"*("+str(corr['value'])+")" 
-        c = "("+self.defaultCuts+")*("+cuts+")*"+self.weight+"*("+corrString+")"
-        rdf=self.rdf.Define('plot_weight',c)
-        h=rdf.Histo2D(model,var1,var2,'plot_weight')
+            corrString = corrString + "*(" + str(corr['value']) + ")"
 
-        #h.Sumw2(0)
-        #h.SetBinErrorOption(ROOT.TH1D.kPoisson)
+        c = "(" + self.defaultCuts + ")*(" + cuts + ")*" + self.weight + "*(" + corrString + ")"
+
+        # check effect of photon_preselection and cut-based ID
+        is_num = False
+        if "Photon_cutBased" in cuts:
+            is_num = True
+
+        h = None
+        print(f"\n{'-'*120}")
+        print(c)
+        if is_num:
+            control = cuts.rsplit('&&', 1)[0]
+            photon_selection_cutbased = "((Photon_preselection*Photon_cutBased)>0)"
+            photon_selection = "((Photon_preselection)>0)"
+
+            rdf_nosel = self.rdf.Define('plot_weight', "(" + self.defaultCuts + ")*(" + control + ")*" + self.weight + "*(" + corrString + ")")
+            h_nosel = rdf_nosel.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            rdf_sel = self.rdf.Define('plot_weight', "(" + self.defaultCuts + ")*(" + control + "&&" + photon_selection + ")*" + self.weight + "*(" + corrString + ")")
+            h_sel = rdf_sel.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            rdf = self.rdf.Define('plot_weight', c)
+            h = rdf.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            print(f"Before photon cuts:        {h_nosel.Integral()}")
+            print(f"After preselection:        {h_sel.Integral()}")
+            print(f"After preselection+cutBased: {h.Integral()}")
+
+        else:
+            control = cuts.rsplit('&&', 1)[0]
+            photon_selection = "((Photon_preselection==1))"
+
+            rdf_nosel = self.rdf.Define('plot_weight', "(" + self.defaultCuts + ")*(" + control + ")*" + self.weight + "*(" + corrString + ")")
+            h_nosel = rdf_nosel.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            rdf_sel = self.rdf.Define('plot_weight', "(" + self.defaultCuts + ")*(" + control + "&&" + photon_selection + ")*" + self.weight + "*(" + corrString + ")")
+            h_sel = rdf_sel.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            rdf = self.rdf.Define('plot_weight', c)
+            h = rdf.Histo2D(ROOT.RDF.TH2DModel(*model), var1, var2, 'plot_weight')
+
+            print(f"Before photon cuts:   {h_nosel.Integral()}")
+            print(f"After preselection:   {h_sel.Integral()}")
+
         h.SetLineStyle(self.linestyle)
         h.SetLineColor(self.linecolor)
         h.SetLineWidth(self.linewidth)
         h.SetFillStyle(self.fillstyle)
         h.SetFillColor(self.fillcolor)
         h.SetMarkerStyle(self.markerstyle)
-        if unitsx=="":
+        if unitsx == "":
             h.GetXaxis().SetTitle(titlex)
         else:
-            h.GetXaxis().SetTitle(titlex+ " ["+unitsx+"]")
-        if unitsy=="":
+            h.GetXaxis().SetTitle(titlex + " [" + unitsx + "]")
+        if unitsy == "":
             h.GetYaxis().SetTitle(titley)
         else:
-            h.GetYaxis().SetTitle(titley+ " ["+unitsy+"]")
+            h.GetYaxis().SetTitle(titley + " [" + unitsy + "]")
+
         return h.GetPtr()
 
     def unrolled2d(self,var1,var2,cuts,model):
@@ -489,19 +528,19 @@ class merged_plotter(plotter_base):
         h = None
         for plotter in self.plotters:
             if h is None:
-                try:
+                # try:
                     h = plotter.hist2d(var1,var2, cuts, model, titlex, unitsx, titley, unitsy)
                     #print("[MERGED-PLOTTER] cuts good...")
-                except:
-                    #print("[MERGED-PLOTTER] cuts failed!")
-                    continue
+                # except:
+                #     print("[MERGED-PLOTTER] cuts failed!")
+                #     continue
             else:
-                try:
+                # try:
                     h.Add(plotter.hist2d(var1,var2, cuts, model, titlex, unitsx, titley, unitsy))
                     #print("[MERGED-PLOTTER] cuts good...")
-                except:
-                    #print("[MERGED-PLOTTER] cuts failed!")
-                    continue                    
+                # except:
+                #     print("[MERGED-PLOTTER] cuts failed!")
+                #     continue                    
         if h is None:
             return h
         else:
